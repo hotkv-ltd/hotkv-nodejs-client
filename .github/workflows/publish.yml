@@ -1,0 +1,86 @@
+name: Publish
+
+# Publishes the package to npm when a version tag is pushed (v1.2.3). A manual
+# run is a dry run unless dry_run is switched off: it then does everything but
+# the final `npm publish`.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, test and pack, but do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, test and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing and provenance
+    env:
+      # A tag push publishes; a manual run publishes only when dry_run is off.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Check that the tag matches the package version
+        if: github.ref_type == 'tag'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version} (expected v${version})."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package.json version ${version}."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build (ESM + CJS + types)
+        run: npm run build
+
+      - name: Unit tests (no server required)
+        run: npm run test:unit
+
+      - name: Check the contents of the package
+        run: |
+          npm pack --dry-run 2>&1 | tee pack.txt
+          for f in LICENSE README.md package.json dist/index.js dist/index.cjs dist/index.d.ts dist/index.d.cts; do
+            grep -q " $f\$" pack.txt || { echo "Missing from the package: $f"; exit 1; }
+          done
+
+      - name: Build the tarball
+        run: npm pack
+
+      # Trusted Publishing needs npm 11.5.1 or newer. npm trusts this repository and
+      # workflow (set on the package's settings page), so no token is stored.
+      - name: Use a current npm
+        if: env.DRY_RUN != 'true'
+        run: npm install -g npm@^11.5.1
+
+      - name: Publish to npm
+        if: env.DRY_RUN != 'true'
+        run: npm publish --provenance --access public
+
+      - name: Dry run summary
+        if: env.DRY_RUN == 'true'
+        run: echo "Dry run only. The package was built, tested and packed, and nothing was published."
