@@ -110,7 +110,7 @@
   },
   "devDependencies": {
     "@langchain/core": "^1.2.12",
-    "@types/node": "^20.14.0",
+    "@types/node": "^26.6.4",
     "ai": "^7.0.114",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
