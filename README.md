@@ -17,7 +17,7 @@ with full `.d.ts` types.
 npm install @hotkv/client
 ```
 
-Requires Node.js 18 or later.
+Requires Node.js 20 or later.
 
 ## Quick start
 
